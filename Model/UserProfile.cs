@@ -5,6 +5,7 @@ using System.Web;
 
 namespace FindMyGears.Model
 {
+    [Serializable]
     public class UserProfile
     {
         public string Name { get; set; }

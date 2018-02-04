@@ -12,8 +12,10 @@ namespace FindMyGears.Dialogs
     public class RootDialog : IDialog<object>
     {
 
-        private List<Questionary> questionaryList;
+        //private List<Questionary> questionaryList;
         private Helper helper;
+        private UserProfile userProfile;
+        private OrderPayLoad orderPayLoad;
 
         public Task StartAsync(IDialogContext context)
         {
@@ -21,19 +23,8 @@ namespace FindMyGears.Dialogs
 
             return Task.CompletedTask;
         }
+        //   await context.PostAsync($"You sent {activity.Text} which was {length} characters");
 
-        private async Task MessageReceivedAsync(IDialogContext context, IAwaitable<object> result)
-        {
-            var activity = await result as Activity;
-
-            // calculate something for us to return
-            int length = (activity.Text ?? string.Empty).Length;
-
-            // return our reply to the user
-            await context.PostAsync($"You sent {activity.Text} which was {length} characters");
-
-            context.Wait(MessageReceivedAsync);
-        }
 
         private async Task StartConversationAsync(IDialogContext context, IAwaitable<IMessageActivity> result)
         {
@@ -82,7 +73,7 @@ namespace FindMyGears.Dialogs
             {
                 Activity reply = ShowSubCategories(context, result, activity);
                 await context.PostAsync(reply);
-                context.Wait(ShowResult);
+                context.Wait(GetAge);
             }
 
 
@@ -109,28 +100,136 @@ namespace FindMyGears.Dialogs
 
         }
 
-        private async Task ShowResult(IDialogContext context, IAwaitable<IMessageActivity> result)
+        //Ask questions to search for exact requirement -- Searching will be Done by Machine Learning
+        private async Task GetName(IDialogContext context, IAwaitable<IMessageActivity> result)
         {
             var activity = await result as Activity;
             Activity reply = activity.CreateReply();
 
-            //Ask questions to search for exact requirement --It will be Done by Machine Learning
-            //questionaryList = helper.GetQuestionaryList();
-            //int id = helper.GetId(activity.Text);
+            await context.PostAsync(reply);
+            context.Wait(GetAge);
+        }
 
-            //foreach(Questionary questionary in questionaryList)
-            //{
-            //    if (questionary.Id == id)
-            //    {
-            Attachment attachment = CreateThumbnailCard(Questionary.genderQuestion);
+        private async Task GetAge(IDialogContext context, IAwaitable<IMessageActivity> result)
+        {
+            userProfile = new UserProfile();
+            var activity = await result as Activity;
+            Activity reply = activity.CreateReply();
+            userProfile.Name = activity.Text;
+
+            CardAction firstCard = new CardAction()
+            {
+                Value = "1",
+                Type = "postBack",
+                Title = Constants.firstAgeGroup
+            };
+
+
+            CardAction secondCard = new CardAction()
+            {
+                Value = "2",
+                Type = "postBack",
+                Title = Constants.secondAgeGroup
+            };
+
+            CardAction thirdCard = new CardAction()
+            {
+                Value = "3",
+                Type = "postBack",
+                Title = Constants.thirdAgeGroup
+            };
+
+
+            CardAction fourthCard = new CardAction()
+            {
+                Value = "4",
+                Type = "postBack",
+                Title = Constants.fourthAgeGroup
+            };
+
+
+
+            var card = new ThumbnailCard
+            {
+                Title = Questionary.ageQuestion,
+                Buttons = new List<CardAction> { firstCard, secondCard, thirdCard, fourthCard }
+            };
+
+            Attachment attachment = card.ToAttachment();
+
+            context.Wait(GetGender);
+        }
+
+        private async Task GetGender(IDialogContext context, IAwaitable<IMessageActivity> result)
+        {
+            var activity = await result as Activity;
+            Activity reply = activity.CreateReply();
+            userProfile.Age = activity.Text;
+
+            Attachment attachment = CreateThumbnailCard(Questionary.genderQuestion, Constants.male, Constants.female);
             reply.Attachments.Add(attachment);
 
-            //    }
-            //}
+            await context.PostAsync(reply);
+            context.Wait(GetSize);
+        }
+
+        private async Task GetSize(IDialogContext context, IAwaitable<IMessageActivity> result)
+        {
+            orderPayLoad = new OrderPayLoad();
+            var activity = await result as Activity;
+            Activity reply = activity.CreateReply();
+            userProfile.Gender = activity.Text;
+
+            //Questionary.sizeQuestion
+            await context.PostAsync(Questionary.sizeQuestion);
+
+
+            context.Wait(GetRunningType);
+        }
+
+        private async Task GetRunningType(IDialogContext context, IAwaitable<IMessageActivity> result)
+        {
+            var activity = await result as Activity;
+            Activity reply = activity.CreateReply();
+            orderPayLoad.Size = activity.Text;
+
+            Attachment attachment = CreateThumbnailCard(Questionary.runningTypeQuestion, "On Road", "On TrackMill");
+            reply.Attachments.Add(attachment);
 
             await context.PostAsync(reply);
-            context.Wait(Selection);
+            context.Wait(Next);
         }
+
+        private async Task Next(IDialogContext context, IAwaitable<IMessageActivity> result)
+        {
+            var activity = await result as Activity;
+            Activity reply = activity.CreateReply($"As per your need, the following are the recommendations");
+            orderPayLoad.RunningType = activity.Text;
+
+
+            // helper = new Helper();
+            List<Products> productList = helper.GetProducts();
+
+            //Activity reply = activity.CreateReply();
+            reply.AttachmentLayout = AttachmentLayoutTypes.Carousel;
+
+            foreach (Products product in productList)
+            {
+                reply.Attachments.Add(CreateCard(product.ImageUrl, product.Price));
+            }
+
+            await context.PostAsync(reply);
+            context.Wait(OrderPlaced);
+        }
+
+        private async Task OrderPlaced(IDialogContext context, IAwaitable<IMessageActivity> result)
+        {
+            var activity = await result as Activity;
+            Activity reply = activity.CreateReply($"Your Order has been Placed. You will recieve confirmation email from us.");
+            await context.PostAsync(reply);
+            context.Wait(StartConversationAsync);
+        }
+
 
         private Attachment CreateCard(String imageUrl, String value)
         {
@@ -163,13 +262,13 @@ namespace FindMyGears.Dialogs
             return attachment;
         }
 
-        private Attachment CreateThumbnailCard(string questionary)
+        private Attachment CreateThumbnailCard(string questionary, string firstTitle, string secondTitle)
         {
             CardAction firstCard = new CardAction()
             {
                 Value = "1",
                 Type = "postBack",
-                Title = Constants.male
+                Title = firstTitle
             };
 
 
@@ -177,8 +276,9 @@ namespace FindMyGears.Dialogs
             {
                 Value = "2",
                 Type = "postBack",
-                Title = Constants.female
+                Title = secondTitle
             };
+
 
 
             var card = new ThumbnailCard
